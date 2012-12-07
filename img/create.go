@@ -47,28 +47,39 @@ func init() {
 
 // Create resized sample images
 func main() {
+	c := make(chan bool, len(images))
 	for name, uri := range images {
-		resp, err := http.Get(uri)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer resp.Body.Close()
-
-		img, _, err := image.Decode(resp.Body)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		resizeWithAllFilters(name, img)
+		go func(name, uri string) {
+			getAndResize(name, uri)
+			c <- true
+		}(name, uri)
 	}
+
+	for i := 0; i < len(images); i++ {
+		<-c
+	}
+}
+
+func getAndResize(imgName, uri string) {
+	resp, err := http.Get(uri)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	img, _, err := image.Decode(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resizeWithAllFilters(imgName, img)
 }
 
 func resizeWithAllFilters(imgName string, img image.Image) {
 	for name, filter := range filters {
 		m := resize.Resize(300, 0, img, filter)
-
 		fileName := imgName + "_300_" + name + ".png"
-
 		writeImageToFile(fileName, m)
 	}
 }
@@ -78,6 +89,7 @@ func writeImageToFile(fileName string, img image.Image) error {
 	if err != nil {
 		return err
 	}
+
 	defer out.Close()
 
 	png.Encode(out, img)
